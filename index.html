@@ -3,54 +3,128 @@
 <head>
   <meta charset="utf-8">
   <title>Fortuna POC</title>
+  
+  <!-- Tailwind for quick styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* simple bubbles */
+    #thread { max-height: 60vh; overflow-y: auto; padding: 1rem; }
+    .bubble { max-width: 80%; padding: .75rem 1rem; border-radius: 1rem; margin: .5rem 0; }
+    .user      { background:#2563eb; color:#fff; margin-left:auto; }
+    .assistant { background:#f3f4f6; color:#111; margin-right:auto; }
+  </style>
 
   <script>
-    async function sendChat() {
-      const msg = document.getElementById("message").value;
+    const system = {
+      role: 'system',
+      content: 'You are <strong>Fortuna</strong>, a concise, upbeat financial coach. Answer clearly and keep responses under 120 words.'
+    };
 
-      // call the Vercel function
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: msg }],
-          model: 'gpt-4o-mini'
-        })
+    // Restore chat + token usage from previous sessions
+    const history  = JSON.parse(localStorage.getItem('fortunaHistory') || '[]');
+    let   tokenSum = Number(localStorage.getItem('fortunaTokens') || 0);
+
+    /** re‑render the message thread */
+    function renderThread () {
+      const t = document.getElementById('thread');
+      t.innerHTML = '';
+      history.forEach(m => {
+        const div = document.createElement('div');
+        div.className = `bubble ${m.role === 'user' ? 'user' : 'assistant'}`;
+        div.innerHTML = m.content.replace(/\n/g, '<br>');
+        t.appendChild(div);
       });
-
-      const j = await res.json();
-      document.getElementById('output').textContent =
-  j.choices?.[0]?.message?.content ?? JSON.stringify(j, null, 2);
-
+      t.scrollTop = t.scrollHeight;
+      document.getElementById('cost').textContent = `≈ $${(tokenSum/1000*0.01).toFixed(4)}`;
     }
 
-    async function itemise() {
-      const f  = document.getElementById('file').files[0];
-      const fd = new FormData(); fd.append('file', f);
+    window.addEventListener('load', renderThread);
 
-      // call the Vercel function
-      const res = await fetch('/api/itemise', { method: 'POST', body: fd });
+    /** send a chat message */
+    async function sendChat () {
+      const box = document.getElementById('message');
+      const msg = box.value.trim();
+      if (!msg) return;
+      box.value = '';
+      history.push({ role:'user', content: msg });
+      renderThread();
+      document.getElementById('typing').hidden = false;
 
-      const j = await res.json();
-      document.getElementById('output').textContent =
-        JSON.stringify(j.items ?? j, null, 2);
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [system, ...history].slice(-20)   // keep last 20
+          })
+        });
+        const j      = await res.json();
+        const reply  = j.choices?.[0]?.message?.content || '⚠️ Error';
+        const tokens = j.usage?.total_tokens || 0;
+
+        history.push({ role:'assistant', content: reply });
+        tokenSum += tokens;
+        localStorage.setItem('fortunaHistory', JSON.stringify(history));
+        localStorage.setItem('fortunaTokens',  tokenSum);
+
+      } catch (err) {
+        console.error(err);
+        history.push({ role:'assistant', content: '⚠️ Network error' });
+      }
+
+      document.getElementById('typing').hidden = true;
+      renderThread();
+    }
+
+    /** call the itemiser endpoint with an image file */
+    async function itemise () {
+      const file = document.getElementById('file').files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+
+      document.getElementById('typing').hidden = true;
+
+      try {
+        const res = await fetch('/api/itemise', { method:'POST', body: fd });
+        const j   = await res.json();
+        history.push({ role:'assistant', content: `<pre>${JSON.stringify(j.items || j, null, 2)}</pre>` });
+        localStorage.setItem('fortunaHistory', JSON.stringify(history));
+      } catch (err) {
+        console.error(err);
+        history.push({ role:'assistant', content: '⚠️ Itemise error' });
+      }
+
+      document.getElementById('typing').hidden = true;
+      renderThread();
     }
   </script>
 </head>
 
-<body>
-  <h1>Fortuna POC Website</h1>
+<body class="flex flex-col items-center p-4 gap-4">
+  <h1 class="text-2xl font-bold">Fortuna POC Website</h1>
 
-  <textarea id="message" rows="3" placeholder="Ask Fortuna..."></textarea><br>
-  <button onclick="sendChat()">Send Chat</button><br><br>
+  <!-- message thread -->
+  <div id="thread" class="w-full max-w-xl border rounded-lg bg-white shadow-inner"></div>
 
-  <input type="file" id="file" accept="image/*"><br>
-  <button onclick="itemise()">Itemise Bill</button>
+  <!-- composer -->
+  <textarea id="message" rows="3" placeholder="Ask Fortuna…" class="w-full max-w-xl border rounded p-2"></textarea>
+  <button onclick="sendChat()" class="px-4 py-2 bg-blue-600 text-white rounded shadow">Send Chat</button>
 
-  <pre id="output" style="background:#f4f4f4; padding:1rem;"></pre>
+  <!-- file upload / itemiser -->
+  <div class="w-full max-w-xl flex flex-col gap-2">
+    <input type="file" id="file" accept="image/*" class="w-full border rounded p-1" />
+    <button onclick="itemise()" class="px-4 py-2 bg-emerald-600 text-white rounded shadow">Itemise Bill</button>
+  </div>
 
-  <footer style="text-align:center; padding:1rem;">
-    Powered by <a href="https://platform.openai.com" target="_blank" rel="noopener">OpenAI&nbsp;API</a>
+  <!-- typing indicator + cost meter -->
+  <div id="typing" class="text-gray-500" hidden>…thinking…</div>
+  <div id="cost"   class="text-sm text-gray-500 fixed bottom-2 right-3"></div>
+
+  <footer class="text-center text-sm text-gray-400 mt-6">
+    Powered by <a href="https://platform.openai.com" target="_blank" rel="noopener" class="underline">OpenAI API</a>
   </footer>
 </body>
 </html>
