@@ -1,26 +1,29 @@
 // api/itemise.js
-import formidable from 'formidable';
-import fs from 'fs/promises';
+import { Readable } from 'stream';
+import { Buffer } from 'buffer';
 
-export const config = { api: { bodyParser: false } };   // tell Vercel we’ll parse
+export const config = { api: { bodyParser: false } };   // Vercel: don't pre-parse
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  // 1. Parse multipart form -> get the image file
-  const { files } = await new Promise((resolve, reject) =>
-    formidable().parse(req, (err, fields, files) =>
-      err ? reject(err) : resolve({ fields, files })
-    )
-  );
+  // ---- 1. grab the file from the multipart body ----
+  const boundary = req.headers['content-type']?.split('boundary=')[1];
+  if (!boundary) return res.status(400).json({ error: 'no multipart boundary' });
 
-  const file = files.file;
-  if (!file) return res.status(400).json({ error: 'no file field' });
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks);
 
-  // 2. Read file as base64 (data: URL not required)
-  const imgData = await fs.readFile(file.filepath, { encoding: 'base64' });
+  // crude split — good enough for one <input type="file" name="file">
+  const parts = raw.toString('binary').split(boundary);
+  const filePart = parts.find(p => p.includes('Content-Disposition') && p.includes('filename='));
+  if (!filePart) return res.status(400).json({ error: 'no file field' });
 
-  // 3. Call OpenAI GPT-4o vision
+  const binary = filePart.split('\r\n\r\n')[1].split('\r\n--')[0];
+  const imgBase64 = Buffer.from(binary, 'binary').toString('base64');
+
+  // ---- 2. call OpenAI vision ----
   const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -28,27 +31,25 @@ export default async function handler(req, res) {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',        // or full gpt-4o if you have access
+      model: 'gpt-4o-mini',
       max_tokens: 200,
       messages: [
         {
           role: 'system',
           content:
             'You are an expense extractor. ' +
-            'Return STRICT JSON — array of objects {item, price} with price as number — from the receipt.'
+            'Return STRICT JSON — array of objects {item, price} (price as number) — from the receipt.'
         },
         {
           role: 'user',
           content: [
             {
               type: 'text',
-              text: 'Here is a receipt image. Extract the items and their prices.'
+              text: 'Extract the items and their prices from this receipt image.'
             },
             {
               type: 'image_url',
-              image_url: {
-                url: `data:image/png;base64,${imgData}`
-              }
+              image_url: { url: `data:image/png;base64,${imgBase64}` }
             }
           ]
         }
@@ -58,18 +59,10 @@ export default async function handler(req, res) {
 
   if (!openaiRes.ok) {
     const errText = await openaiRes.text();
-    return res.status(500).json({ error: 'OpenAI failed', details: errText });
+    return res.status(500).json({ error: 'OpenAI vision call failed', details: errText });
   }
 
   const data = await openaiRes.json();
-
-  // 4. Parse GPT’s answer safely
   let items = [];
   try {
-    items = JSON.parse(data.choices[0].message.content.trim());
-  } catch (e) {
-    return res.status(500).json({ error: 'Bad JSON from model', raw: data });
-  }
-
-  res.status(200).json({ items });
-}
+    items = JSON.parse(data.choices[0].message.content
