@@ -12,7 +12,10 @@
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: 'demo', user_message: msg })
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: msg }],
+          model: 'gpt-4o-mini'
+        })
       });
 
       const j = await res.json();
