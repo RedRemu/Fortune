@@ -2,36 +2,50 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>FinBot POC</title>
+  <title>Fortuna POC</title>
+
   <script>
     async function sendChat() {
       const msg = document.getElementById("message").value;
-      const res = await fetch('/chat', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({session_id:'demo', user_message: msg})
+
+      // call the Vercel function
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: 'demo', user_message: msg })
       });
+
       const j = await res.json();
-      document.getElementById('output').textContent = j.reply;
+      document.getElementById('output').textContent = j.reply ?? JSON.stringify(j, null, 2);
     }
+
     async function itemise() {
-      const f = document.getElementById('file').files[0];
+      const f  = document.getElementById('file').files[0];
       const fd = new FormData(); fd.append('file', f);
-      const res = await fetch('/itemise', {method:'POST', body: fd});
+
+      // call the Vercel function
+      const res = await fetch('/api/itemise', { method: 'POST', body: fd });
+
       const j = await res.json();
-      document.getElementById('output').textContent = JSON.stringify(j.items, null, 2);
+      document.getElementById('output').textContent =
+        JSON.stringify(j.items ?? j, null, 2);
     }
   </script>
 </head>
+
 <body>
-  <h1>FinBot POC Website</h1>
-  <textarea id="message" rows="3" placeholder="Ask FinBot..."></textarea><br>
+  <h1>Fortuna POC Website</h1>
+
+  <textarea id="message" rows="3" placeholder="Ask Fortuna..."></textarea><br>
   <button onclick="sendChat()">Send Chat</button><br><br>
+
   <input type="file" id="file" accept="image/*"><br>
   <button onclick="itemise()">Itemise Bill</button>
+
   <pre id="output" style="background:#f4f4f4; padding:1rem;"></pre>
+
   <footer style="text-align:center; padding:1rem;">
-    Powered by <a href="https://platform.openai.com" target="_blank" rel="noopener">OpenAI API</a>
+    Powered by <a href="https://platform.openai.com" target="_blank" rel="noopener">OpenAI&nbsp;API</a>
   </footer>
 </body>
 </html>
