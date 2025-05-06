@@ -19,7 +19,9 @@
       });
 
       const j = await res.json();
-      document.getElementById('output').textContent = j.reply ?? JSON.stringify(j, null, 2);
+      document.getElementById('output').textContent =
+  j.choices?.[0]?.message?.content ?? JSON.stringify(j, null, 2);
+
     }
 
     async function itemise() {
