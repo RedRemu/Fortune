@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "sharp": "^0.33.0"
+     "formidable": "^3.5.0"        ← add this line
   }
 }
 
