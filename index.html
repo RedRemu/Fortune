@@ -2,120 +2,203 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Fortuna AI</title>
+  <title>Fortuna </title>
+
+  <!-- Tailwind (CDN is fine for demo) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    #thread::-webkit-scrollbar{width:6px}#thread::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:3px}
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
 </head>
-<body class="bg-slate-50 min-h-screen flex flex-col sm:flex-row font-sans">
 
-  <!-- ──────────────  SIDEBAR  ────────────── -->
-  <aside class="w-full sm:w-72 bg-white border-r border-slate-200 p-4 flex flex-col gap-6">
-    <h1 class="text-2xl font-bold text-indigo-600">Fortuna Centrique</h1>
+<body class="bg-gray-100 text-sm">
 
-    <!-- Receipts folder -->
-    <section>
-      <h2 class="font-semibold mb-2">Receipts</h2>
-      <div id="receiptList" class="text-sm space-y-1 max-h-40 overflow-y-auto"></div>
-      <label class="block mt-2 cursor-pointer text-indigo-600 hover:underline">
-        + Add receipt
-        <input type="file" accept="image/*" class="hidden" onchange="uploadFile(event,'receipt')" />
-      </label>
-    </section>
+  <!-- ── COVER ─────────────────────────────────────── -->
+  <section id="cover"
+           class="fixed inset-0 flex flex-col items-center justify-center
+                  bg-gradient-to-br from-indigo-600 to-indigo-800 text-white">
+    <h1 class="text-4xl font-bold mb-4 tracking-wide">Fortuna</h1>
+    <p class="mb-8 text-center max-w-md">
+      Your AI co-pilot for receipts,<br />
+      bank statements&nbsp;&amp; everyday<br />
+      money decisions.
+    </p>
+    <button id="startBtn"
+            class="px-6 py-3 rounded-lg bg-white text-indigo-700 font-medium
+                   hover:bg-gray-100 transition">
+      Start Chat
+    </button>
+  </section>
 
-    <!-- Statements folder -->
-    <section>
-      <h2 class="font-semibold mb-2">Bank Statements</h2>
-      <div id="statementList" class="text-sm space-y-1 max-h-40 overflow-y-auto"></div>
-      <label class="block mt-2 cursor-pointer text-indigo-600 hover:underline">
-        + Add statement
-        <input type="file" accept=".pdf,.csv" class="hidden" onchange="uploadFile(event,'statement')" />
-      </label>
-    </section>
+  <!-- ── MAIN APP ──────────────────────────────────── -->
+  <section id="app" class="hidden flex flex-col h-screen">
 
-    <div class="mt-auto text-xs text-slate-500">© 2025 Fortuna AI</div>
-  </aside>
+    <!-- Top bar -->
+    <header
+      class="h-12 bg-indigo-700 text-white flex items-center px-4 font-semibold">
+      Fortuna&nbsp;;&bull;&nbsp;Financial Co-Pilot
+    </header>
 
-  <!-- ──────────────  CHAT  ────────────── -->
-  <main class="flex-1 flex flex-col">
-    <div id="thread" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+    <div class="flex flex-1 overflow-hidden">
 
-    <!-- typing indicator -->
-    <div class="flex items-center px-4 py-1 text-sm text-slate-500">
-      <span id="typing" class="hidden">Fortuna is typing<span class="animate-pulse">…</span></span>
+      <!-- Sidebar -->
+      <aside class="w-56 bg-white border-r p-4 overflow-y-auto">
+        <!-- Receipts upload -->
+        <h2 class="font-semibold mb-2">Receipts</h2>
+        <div id="receiptZone"
+             class="border-2 border-dashed border-gray-300 rounded-lg
+                    h-28 flex items-center justify-center text-gray-400
+                    cursor-pointer mb-6">
+          drag &amp; drop or click
+        </div>
+        <ul id="receiptList" class="text-xs space-y-1"></ul>
+
+        <!-- Statements upload -->
+        <h2 class="font-semibold mt-6 mb-2">Bank&nbsp;Statements</h2>
+        <div id="stmtZone"
+             class="border-2 border-dashed border-gray-300 rounded-lg
+                    h-28 flex items-center justify-center text-gray-400
+                    cursor-pointer mb-6">
+          drag &amp; drop or click
+        </div>
+        <ul id="stmtList" class="text-xs space-y-1"></ul>
+      </aside>
+
+      <!-- Chat area -->
+      <main class="flex-1 flex flex-col">
+
+        <!-- Thread -->
+        <div id="thread" class="flex-1 overflow-y-auto p-4 space-y-2
+                               bg-white"></div>
+
+        <!-- Input -->
+        <div class="p-4 border-t bg-gray-50">
+          <textarea id="message"
+                    class="w-full border rounded p-2 h-20 resize-none
+                           focus:outline-none focus:ring"
+                    placeholder="Ask Fortuna…"></textarea>
+          <button id="sendBtn"
+                  class="mt-3 px-6 py-2 bg-indigo-600 text-white rounded
+                         hover:bg-indigo-700 transition">
+            Send&nbsp;Chat
+          </button>
+        </div>
+
+      </main>
     </div>
 
-    <!-- message box -->
-    <div class="border-t bg-white p-4">
-      <textarea id="message" rows="2" placeholder="Ask Fortuna…" class="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
-      <button onclick="sendChat()" class="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg float-right">Send</button>
-    </div>
-  </main>
+    <footer class="h-8 text-center text-gray-400 text-xs flex items-center
+                   justify-center border-t">
+      Powered by OpenAI&nbsp;API
+    </footer>
+  </section>
 
-<!-- ──────────────  SCRIPT  ────────────── -->
-<script>
-// ---- global state ----
-const system = { role:'system', content:'You are Fortuna, a concise upbeat financial coach.' };
-let history = JSON.parse(localStorage.getItem('fortunaHistory')||'[]');
-const thread = document.getElementById('thread');
+  <!-- ── SCRIPT ───────────────────────────────────── -->
+  <script>
+  // cover ➜ app
+  document.getElementById('startBtn').onclick = () => {
+    document.getElementById('cover').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+  };
 
-renderThread();
+  // helpers
+  const thread = document.getElementById('thread');
+  function addBubble(role, text) {
+    const div = document.createElement('div');
+    div.className = `max-w-[80%] px-4 py-3 rounded-lg whitespace-pre-wrap ${
+      role==='user'
+        ? 'bg-indigo-600 text-white ml-auto'
+        : 'bg-gray-100 text-gray-900'
+    }`;
+    div.textContent = text;
+    thread.appendChild(div);
+    thread.scrollTop = thread.scrollHeight;
+  }
 
-// ---- helpers ----
-function addBubble(role,text){
-  const div=document.createElement('div');
-  div.className=`bubble ${role==='user'?'bg-indigo-600 text-white ml-auto':'bg-slate-200 text-slate-900 mr-auto'} max-w-[80%] px-4 py-2 rounded-2xl whitespace-pre-wrap`;
-  div.textContent=text; thread.appendChild(div); thread.scrollTop=thread.scrollHeight;
-}
-function renderThread(){ thread.innerHTML=''; history.forEach(m=>addBubble(m.role,m.content)); }
+  // memory
+  const system = { role:'system',
+    content: 'You are Fortuna, a concise upbeat financial assistant.' };
+  let history = JSON.parse(localStorage.getItem('fortunaHistory')||'[]');
+  history.forEach(m => addBubble(m.role,m.content));
 
-// ---- token clipping ----
-const MAX_TOKENS=3000;
-function lastTokens(arr){
-  let tot=0, slice=[];
-  for(let i=arr.length-1;i>=0;i--){const est=arr[i].content.length/4; if(tot+est>MAX_TOKENS)break; slice.unshift(arr[i]); tot+=est;}
-  return slice;
-}
+  function lastTokens(arr,maxTok=3000){
+    let out=[],ct=0;
+    for(let i=arr.length-1;i>=0;i--){
+      const est=arr[i].content.length/4;
+      if(ct+est>maxTok)break;
+      out.unshift(arr[i]); ct+=est;
+    }
+    return out;
+  }
 
-// ---- CHAT ----
-async function sendChat(){
-  const msg=document.getElementById('message').value.trim();
-  if(!msg) return; document.getElementById('message').value='';
-  history.push({role:'user',content:msg}); addBubble('user',msg);
-  localStorage.setItem('fortunaHistory',JSON.stringify(history));
+  // chat send
+  document.getElementById('sendBtn').onclick = async () => {
+    const msg = document.getElementById('message').value.trim();
+    if(!msg) return;
+    document.getElementById('message').value='';
+    history.push({role:'user',content:msg});
+    addBubble('user',msg);
 
-  document.getElementById('typing').hidden=false;
-  try{
-    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:lastTokens([system,...history])})});
-    const j=await res.json(); if(!res.ok) throw new Error(j.error||'chat failed');
+    try{
+      const res=await fetch('/api/chat',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({messages:lastTokens([system,...history])})
+      });
+      const j = await res.json();
+      if(!res.ok) throw new Error(j.error||'API error');
+      const reply = j.choices?.[0]?.message?.content||'…';
+      history.push({role:'assistant',content:reply});
+      localStorage.setItem('fortunaHistory',JSON.stringify(history));
+      addBubble('assistant',reply);
+    }catch(e){
+      addBubble('assistant','⚠️ '+e.message);
+      console.error(e);
+    }
+  };
 
-    const reply=j.choices?.[0]?.message?.content?.trim()||'[no reply]';
-    history.push({role:'assistant',content:reply});
-    localStorage.setItem('fortunaHistory',JSON.stringify(history));
-    addBubble('assistant',reply);
-  }catch(e){ console.error(e); addBubble('assistant','⚠️ '+e.message); }
-  finally{ document.getElementById('typing').hidden=true; thread.scrollTop=thread.scrollHeight; }
-}
+  // --- basic drag-and-drop handlers (receipts & statements) ---
+  function makeZone(zone,list,route){
+    const input = document.createElement('input');
+    input.type='file'; input.className='hidden';
+    zone.appendChild(input);
 
-// ---- FILE UPLOADS ----
-async function uploadFile(ev,type){
-  const file=ev.target.files[0]; if(!file) return;
-  const allowedImg=['image/png','image/jpeg','image/jpg','image/webp','image/gif'];
-  if(type==='receipt' && !allowedImg.includes(file.type)) return addBubble('assistant','⚠️ Unsupported image type');
-  const fd=new FormData(); fd.append('file',file);
-  const route= type==='receipt'? '/api/itemise': '/api/statement';
-  const listEl=document.getElementById(type==='receipt'?'receiptList':'statementList');
-  const row=document.createElement('div'); row.textContent=file.name+' – uploading…'; listEl.appendChild(row);
+    const open = () => input.click();
+    zone.onclick=open;
+    zone.ondragover=e=>{e.preventDefault();zone.classList.add('bg-gray-50');};
+    zone.ondragleave=e=>zone.classList.remove('bg-gray-50');
+    zone.ondrop=e=>{
+      e.preventDefault(); zone.classList.remove('bg-gray-50');
+      handleFiles(e.dataTransfer.files);
+    };
+    input.onchange=()=>handleFiles(input.files);
 
-  try{
-    const res=await fetch(route,{method:'POST',body:fd});
-    const j=await res.json(); if(!res.ok) throw new Error(j.error||'upload failed');
-    row.textContent=file.name+' ✅'; row.classList.add('text-green-700');
-    addBubble('assistant', JSON.stringify((j.items||j.summary),null,2));
-  }catch(e){ row.textContent=file.name+' ❌'; row.classList.add('text-red-600'); addBubble('assistant','⚠️ '+e.message); }
-}
-</script>
+    function handleFiles(files){
+      [...files].forEach(f=>{
+        const li=document.createElement('li');
+        li.textContent=f.name+' ⏳';
+        list.appendChild(li);
+        const fd=new FormData(); fd.append('file',f);
+        fetch(route,{method:'POST',body:fd})
+          .then(r=>r.json().then(j=>[r.ok,j]))
+          .then(([ok,j])=>{
+            li.textContent=f.name+' '+(ok?'✅':'⚠️ failed');
+            if(!ok) console.error(j);
+            if(j.summary) addBubble('assistant',
+              JSON.stringify(j.summary,null,2));
+            if(j.items)   addBubble('assistant',
+              JSON.stringify(j.items,null,2));
+          })
+          .catch(err=>{
+            li.textContent=f.name+' ⚠️ failed';
+            console.error(err);
+          });
+      });
+    }
+  }
+  makeZone(document.getElementById('receiptZone'),
+           document.getElementById('receiptList'),
+           '/api/itemise');
+  makeZone(document.getElementById('stmtZone'),
+           document.getElementById('stmtList'),
+           '/api/statement');
+  </script>
 </body>
 </html>
