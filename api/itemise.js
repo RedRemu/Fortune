@@ -1,35 +1,41 @@
-// api/itemise.js – GPT‑4o vision handler with fencing fix + resize
-import sharp from 'sharp';
+// api/itemise.js
 import { Buffer } from 'buffer';
+import formidable from 'formidable';
+import fs from 'fs/promises';
+import sharp from 'sharp';                     // already in package.json
 
-export const config = { api: { bodyParser: false } }; // Vercel: we’ll handle multipart
+export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  // ——— 1. Collect raw multipart body
-  const boundary = req.headers['content-type']?.split('boundary=')[1];
-  if (!boundary) return res.status(400).json({ error: 'No multipart boundary' });
+  /* ── 1. Parse multipart and grab the uploaded file ───────── */
+  const { files } = await new Promise((resolve, reject) =>
+    formidable().parse(req, (err, /*fields*/ _, files) =>
+      err ? reject(err) : resolve({ files })
+    )
+  );
+  const file = files.file;
+  if (!file) return res.status(400).json({ error: 'no file field' });
 
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString('binary');
-
-  const part = raw.split(boundary).find(p => p.includes('filename='));
-  if (!part) return res.status(400).json({ error: 'No file field' });
-
-  const binary = part.split('\r\n\r\n')[1].split('\r\n--')[0];
-  let imgBuf = Buffer.from(binary, 'binary');
-
-  // ——— 2. Auto‑resize & convert to PNG (saves tokens)
+  /* ── 2. Validate / convert to PNG ─────────────────────────── */
+  const SUPPORTED = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  let imgBuffer;
   try {
-    imgBuf = await sharp(imgBuf).resize({ width: 1024 }).png().toBuffer();
+    imgBuffer = await fs.readFile(file.filepath);
+    if (!SUPPORTED.includes(file.mimetype)) {
+      // auto-convert everything else via sharp → PNG
+      imgBuffer = await sharp(imgBuffer).png().toBuffer();
+    }
   } catch (e) {
-    return res.status(400).json({ error: 'Image conversion failed' });
+    return res.status(415).json({ error: 'unsupported image type' });
   }
-  const imgBase64 = imgBuf.toString('base64');
 
-  // ——— 3. Call GPT‑4o‑mini vision endpoint
+  // resize (cuts token cost by ~4×)
+  imgBuffer = await sharp(imgBuffer).resize({ width: 1024 }).png().toBuffer();
+  const imgBase64 = imgBuffer.toString('base64');
+
+  /* ── 3. Call GPT-4o vision ───────────────────────────────── */
   const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -43,13 +49,16 @@ export default async function handler(req, res) {
         {
           role: 'system',
           content:
-            'You are an expense extractor. Return STRICT JSON WITHOUT MARKDOWN FENCING — array of objects {item, price} with price as number — from the receipt.'
+            'You are an expense extractor. ' +
+            'Return STRICT JSON WITHOUT MARKDOWN FENCING — ' +
+            'array of objects {item, price} (price as number).'
         },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Extract the items and their prices from this receipt image.' },
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${imgBase64}` } }
+            { type: 'text', text: 'Extract items & prices from this receipt.' },
+            { type: 'image_url',
+              image_url: { url: `data:image/png;base64,${imgBase64}` } }
           ]
         }
       ]
@@ -57,21 +66,20 @@ export default async function handler(req, res) {
   });
 
   if (!openaiRes.ok) {
-    const err = await openaiRes.text();
-    return res.status(500).json({ error: 'OpenAI vision call failed', details: err });
+    const errText = await openaiRes.text();
+    return res.status(500).json({ error: 'OpenAI vision call failed', details: errText });
   }
 
   const data = await openaiRes.json();
 
-  // ——— 4. Strip any accidental ``` fences then JSON.parse
-  let rawText = data.choices?.[0]?.message?.content?.trim() || '';
-  rawText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
-
-  let items = [];
+  /* ── 4. Parse JSON (strip ``` fences if model slips) ─────── */
+  let raw = data.choices?.[0]?.message?.content || '';
+  raw = raw.replace(/```json|```/gi, '').trim();
+  let items;
   try {
-    items = JSON.parse(rawText);
-  } catch (e) {
-    return res.status(500).json({ error: 'Could not parse JSON', raw: rawText });
+    items = JSON.parse(raw);
+  } catch {
+    return res.status(500).json({ error: 'bad JSON from model', raw });
   }
 
   return res.status(200).json({ items });
