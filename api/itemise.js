@@ -2,40 +2,44 @@
 import { Buffer } from 'buffer';
 import formidable from 'formidable';
 import fs from 'fs/promises';
-import sharp from 'sharp';                     // already in package.json
+import sharp from 'sharp';
 
 export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  /* ── 1. Parse multipart and grab the uploaded file ───────── */
+  /* ── 1. Parse multipart and grab the uploaded file ──────────── */
   const { files } = await new Promise((resolve, reject) =>
-    formidable().parse(req, (err, /*fields*/ _, files) =>
+    formidable().parse(req, (err, _, files) =>
       err ? reject(err) : resolve({ files })
     )
   );
   const file = files.file;
   if (!file) return res.status(400).json({ error: 'no file field' });
 
-  /* ── 2. Validate / convert to PNG ─────────────────────────── */
+  /* ── 2. Validate / convert to PNG ───────────────────────────── */
   const SUPPORTED = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   let imgBuffer;
   try {
     imgBuffer = await fs.readFile(file.filepath);
+
+    // Convert unsupported types to PNG
     if (!SUPPORTED.includes(file.mimetype)) {
-      // auto-convert everything else via sharp → PNG
       imgBuffer = await sharp(imgBuffer).png().toBuffer();
     }
-  } catch (e) {
+  } catch {
     return res.status(415).json({ error: 'unsupported image type' });
   }
 
-  // resize (cuts token cost by ~4×)
-  imgBuffer = await sharp(imgBuffer).resize({ width: 1024 }).png().toBuffer();
+  // Resize for cheaper token cost
+  imgBuffer = await sharp(imgBuffer)
+                .resize({ width: 1024 })
+                .png()
+                .toBuffer();
   const imgBase64 = imgBuffer.toString('base64');
 
-  /* ── 3. Call GPT-4o vision ───────────────────────────────── */
+  /* ── 3. Call GPT-4o vision ─────────────────────────────────── */
   const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -56,7 +60,8 @@ export default async function handler(req, res) {
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Extract items & prices from this receipt.' },
+            { type: 'text',
+              text: 'Extract the items and their prices from this receipt.' },
             { type: 'image_url',
               image_url: { url: `data:image/png;base64,${imgBase64}` } }
           ]
@@ -67,14 +72,18 @@ export default async function handler(req, res) {
 
   if (!openaiRes.ok) {
     const errText = await openaiRes.text();
-    return res.status(500).json({ error: 'OpenAI vision call failed', details: errText });
+    return res.status(500).json({
+      error: 'OpenAI vision call failed',
+      details: errText
+    });
   }
 
   const data = await openaiRes.json();
 
-  /* ── 4. Parse JSON (strip ``` fences if model slips) ─────── */
+  /* ── 4. Parse JSON (strip ``` fences if model slips) ────────── */
   let raw = data.choices?.[0]?.message?.content || '';
   raw = raw.replace(/```json|```/gi, '').trim();
+
   let items;
   try {
     items = JSON.parse(raw);
@@ -82,5 +91,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'bad JSON from model', raw });
   }
 
+  /* ── 5. Success ─────────────────────────────────────────────── */
   return res.status(200).json({ items });
 }
