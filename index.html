@@ -1,117 +1,124 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Fortuna Centrique POC</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fortuna Centrique POC</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* nice scrollbar for thread */
-    #thread::-webkit-scrollbar { width: 6px; }
-    #thread::-webkit-scrollbar-thumb { background:#94a3b8; border-radius:3px; }
+    #thread::-webkit-scrollbar{width:6px}#thread::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:3px}
   </style>
 </head>
-<body class="min-h-screen bg-slate-50 flex flex-col">
-  <header class="bg-indigo-600 text-white px-6 py-3 text-xl font-semibold shadow">Fortuna Centrique ⚡ Financial Co‑Pilot</header>
-  <main class="flex-1 flex overflow-hidden">
-    <!-- 🗂️ Sidebar: Upload & file shelves -->
-    <aside class="w-72 shrink-0 border-r bg-white flex flex-col">
-      <div class="p-4 space-y-6 overflow-y-auto">
-        <!-- Receipts shelf -->
-        <section>
-          <h2 class="font-medium text-gray-700 mb-2">Receipts</h2>
-          <div id="receiptDrop" class="h-28 bg-gray-50 border-2 border-dashed rounded-lg flex items-center justify-center text-gray-400 cursor-pointer hover:bg-gray-100">
-            <span>drag & drop or click</span>
-            <input id="receiptInput" type="file" accept="image/*" class="hidden" />
-          </div>
-          <ul id="receiptList" class="mt-3 space-y-1 text-sm text-gray-600"></ul>
-        </section>
-        <!-- Bank statements shelf -->
-        <section>
-          <h2 class="font-medium text-gray-700 mb-2 mt-6">Bank Statements</h2>
-          <div id="statementDrop" class="h-28 bg-gray-50 border-2 border-dashed rounded-lg flex items-center justify-center text-gray-400 cursor-pointer hover:bg-gray-100">
-            <span>drag & drop or click</span>
-            <input id="statementInput" type="file" accept=".pdf,.csv" class="hidden" />
-          </div>
-          <ul id="statementList" class="mt-3 space-y-1 text-sm text-gray-600"></ul>
-        </section>
-      </div>
-    </aside>
+<body class="bg-slate-50 min-h-screen flex flex-col sm:flex-row font-sans">
 
-    <!-- 💬 Chat area -->
-    <section class="flex-1 flex flex-col">
-      <div id="thread" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
+  <!-- ──────────────  SIDEBAR  ────────────── -->
+  <aside class="w-full sm:w-72 bg-white border-r border-slate-200 p-4 flex flex-col gap-6">
+    <h1 class="text-2xl font-bold text-indigo-600">Fortuna Centrique</h1>
 
-      <!-- typing indicator & cost -->
-      <div class="px-6 py-2 flex items-center justify-between border-t bg-white">
-        <div id="typing" class="text-sm text-gray-500 italic hidden">Fortuna is thinking…</div>
-        <div id="cost" class="text-xs text-gray-500"></div>
-      </div>
-
-      <!-- prompt box -->
-      <div class="p-4 border-t bg-white">
-        <textarea id="message" rows="2" placeholder="Ask Fortuna…" class="w-full border rounded-lg p-3 focus:outline-none focus:ring focus:ring-indigo-300 resize-none"></textarea>
-        <button id="sendBtn" class="mt-3 px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium w-full sm:w-auto">Send Chat</button>
-      </div>
+    <!-- Receipts folder -->
+    <section>
+      <h2 class="font-semibold mb-2">Receipts</h2>
+      <div id="receiptList" class="text-sm space-y-1 max-h-40 overflow-y-auto"></div>
+      <label class="block mt-2 cursor-pointer text-indigo-600 hover:underline">
+        + Add receipt
+        <input type="file" accept="image/*" class="hidden" onchange="uploadFile(event,'receipt')" />
+      </label>
     </section>
+
+    <!-- Statements folder -->
+    <section>
+      <h2 class="font-semibold mb-2">Bank Statements</h2>
+      <div id="statementList" class="text-sm space-y-1 max-h-40 overflow-y-auto"></div>
+      <label class="block mt-2 cursor-pointer text-indigo-600 hover:underline">
+        + Add statement
+        <input type="file" accept=".pdf,.csv" class="hidden" onchange="uploadFile(event,'statement')" />
+      </label>
+    </section>
+
+    <div class="mt-auto text-xs text-slate-500">© 2025 Fortuna AI</div>
+  </aside>
+
+  <!-- ──────────────  CHAT  ────────────── -->
+  <main class="flex-1 flex flex-col">
+    <div id="thread" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+
+    <!-- typing indicator + cost meter -->
+    <div class="flex items-center justify-between px-4 py-1 text-sm text-slate-500">
+      <span id="typing" class="hidden">Fortuna is typing<span class="animate-pulse">…</span></span>
+      <span id="cost">≈ $0.0000</span>
+    </div>
+
+    <!-- message box -->
+    <div class="border-t bg-white p-4">
+      <textarea id="message" rows="2" placeholder="Ask Fortuna…" class="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+      <button onclick="sendChat()" class="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg float-right">Send</button>
+    </div>
   </main>
 
-  <footer class="text-center text-xs text-gray-400 py-3">Powered by OpenAI API</footer>
-
+<!-- ──────────────  SCRIPT  ────────────── -->
 <script>
-const history = JSON.parse(localStorage.getItem('fortunaHistory') || '[]');
-const system  = { role:'system', content:'You are Fortuna, a concise, upbeat financial coach.'};
-let tokenSum = 0;
-const threadEl = document.getElementById('thread');
-function addBubble(role, txt){
-  const div=document.createElement('div');
-  div.className=`max-w-2xl whitespace-pre-wrap break-words py-2 px-4 rounded-2xl ${role==='user'?'self-end bg-indigo-600 text-white':'self-start bg-gray-100 text-gray-900'}`;
-  div.textContent=txt;
-  threadEl.appendChild(div);
-  threadEl.scrollTop=threadEl.scrollHeight;
-}
-function renderHistory(){threadEl.innerHTML=''; history.forEach(m=>addBubble(m.role,m.content));}
-renderHistory();
+// ---- global state ----
+const system = { role:'system', content:'You are Fortuna, a concise upbeat financial coach.' };
+let history = JSON.parse(localStorage.getItem('fortunaHistory')||'[]');
+let tokenSum = Number(localStorage.getItem('fortunaTokens')||0);
+const thread = document.getElementById('thread');
 
-const typingEl = document.getElementById('typing');
+renderThread(); updateCost();
+
+// ---- helpers ----
+function addBubble(role,text){
+  const div=document.createElement('div');
+  div.className=`bubble ${role==='user'?'bg-indigo-600 text-white ml-auto':'bg-slate-200 text-slate-900 mr-auto'} max-w-[80%] px-4 py-2 rounded-2xl whitespace-pre-wrap`;
+  div.textContent=text; thread.appendChild(div); thread.scrollTop=thread.scrollHeight;
+}
+function renderThread(){ thread.innerHTML=''; history.forEach(m=>addBubble(m.role,m.content)); }
+function updateCost(){ document.getElementById('cost').textContent=`≈ $${(tokenSum/1000*0.01).toFixed(4)}` }
+
+// ---- token clipping ----
+const MAX_TOKENS=3000;
+function lastTokens(arr){
+  let tot=0, slice=[];
+  for(let i=arr.length-1;i>=0;i--){const est=arr[i].content.length/4; if(tot+est>MAX_TOKENS)break; slice.unshift(arr[i]); tot+=est;}
+  return slice;
+}
+
+// ---- CHAT ----
 async function sendChat(){
   const msg=document.getElementById('message').value.trim();
-  if(!msg) return;
-  document.getElementById('message').value='';
-  history.push({role:'user',content:msg});
-  addBubble('user',msg);
-  typingEl.classList.remove('hidden');
-  const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[system,...history].slice(-20)})});
-  const j=await res.json();
-  typingEl.classList.add('hidden');
-  if(!res.ok){addBubble('assistant','⚠️ Chat error');return;}
-  const reply=j.choices?.[0]?.message?.content||'⚠️';
-  history.push({role:'assistant',content:reply}); addBubble('assistant',reply);
+  if(!msg) return; document.getElementById('message').value='';
+  history.push({role:'user',content:msg}); addBubble('user',msg);
   localStorage.setItem('fortunaHistory',JSON.stringify(history));
-  tokenSum+=j.usage?.total_tokens||0; document.getElementById('cost').textContent=`≈ $${(tokenSum/1000*0.01).toFixed(4)}`;
+
+  document.getElementById('typing').hidden=false;
+  try{
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:lastTokens([system,...history])})});
+    const j=await res.json(); if(!res.ok) throw new Error(j.error||'chat failed');
+
+    const reply=j.choices?.[0]?.message?.content?.trim()||'[no reply]';
+    tokenSum+=j.usage?.total_tokens||0; updateCost();
+
+    history.push({role:'assistant',content:reply});
+    localStorage.setItem('fortunaHistory',JSON.stringify(history));
+    addBubble('assistant',reply);
+  }catch(e){ console.error(e); addBubble('assistant','⚠️ '+e.message); }
+  finally{ document.getElementById('typing').hidden=true; thread.scrollTop=thread.scrollHeight; }
 }
 
-document.getElementById('sendBtn').onclick=sendChat;
-
-// ---------- receipt upload ----------
-function handleUpload(file,isReceipt){
+// ---- FILE UPLOADS ----
+async function uploadFile(ev,type){
+  const file=ev.target.files[0]; if(!file) return;
   const fd=new FormData(); fd.append('file',file);
-  const route=isReceipt?'/api/itemise':'/api/statement';
-  const listEl=document.getElementById(isReceipt?'receiptList':'statementList');
-  const li=document.createElement('li'); li.textContent=file.name+' …⏳'; listEl.appendChild(li);
-  fetch(route,{method:'POST',body:fd}).then(r=>r.json().then(j=>({ok:r.ok,data:j}))).then(({ok,data})=>{
-    li.textContent=file.name;
-    addBubble('assistant', ok?JSON.stringify(data.items||data.summary||data,null,2):'⚠️ '+(data.error||'error'));
-  }).catch(()=>{li.textContent=file.name+' ⚠️ failed';addBubble('assistant','⚠️ upload error');});
+  const route= type==='receipt'? '/api/itemise': '/api/statement';
+  const listEl=document.getElementById(type==='receipt'?'receiptList':'statementList');
+  const row=document.createElement('div'); row.textContent=file.name+' – uploading…'; listEl.appendChild(row);
+
+  try{
+    const res=await fetch(route,{method:'POST',body:fd});
+    const j=await res.json(); if(!res.ok) throw new Error(j.error||'upload failed');
+    row.textContent=file.name+' ✅'; row.classList.add('text-green-700');
+    addBubble('assistant', JSON.stringify((j.items||j.summary),null,2));
+  }catch(e){ row.textContent=file.name+' ❌'; row.classList.add('text-red-600'); addBubble('assistant','⚠️ '+e.message); }
 }
-['receipt','statement'].forEach(type=>{
-  const drop=document.getElementById(type+'Drop');
-  const input=document.getElementById(type+'Input');
-  drop.onclick=()=>input.click();
-  input.onchange=e=>{[...e.target.files].forEach(f=>handleUpload(f,type==='receipt'));};
-  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('ring-2','ring-indigo-400');}));
-  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('ring-2','ring-indigo-400'); if(ev==='drop') [...e.dataTransfer.files].forEach(f=>handleUpload(f,type==='receipt'));}));
-});
 </script>
 </body>
 </html>
