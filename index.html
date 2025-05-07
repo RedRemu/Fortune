@@ -91,15 +91,15 @@
     </footer>
   </section>
 
-  <!-- ── SCRIPT ───────────────────────────────────── -->
-  <script>
-  // cover ➜ app
+<!-- ── SCRIPT ───────────────────────────────────── -->
+<script>
+  /* cover ➜ app */
   document.getElementById('startBtn').onclick = () => {
     document.getElementById('cover').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
   };
 
-  // helpers
+  /* helpers */
   const thread = document.getElementById('thread');
   function addBubble(role, text) {
     const div = document.createElement('div');
@@ -113,7 +113,16 @@
     thread.scrollTop = thread.scrollHeight;
   }
 
-  // memory
+  /* NEW – concise-error JSON helper */
+  async function safeJson(promise) {
+    const res = await promise;
+    let j={};
+    try { j = await res.json(); } catch { /* ignore */ }
+    if (!res.ok) throw new Error(j.error || 'server error');
+    return j;
+  }
+
+  /* memory */
   const system = { role:'system',
     content: 'You are Fortuna, a concise upbeat financial assistant.' };
   let history = JSON.parse(localStorage.getItem('fortunaHistory')||'[]');
@@ -129,7 +138,7 @@
     return out;
   }
 
-  // chat send
+  /* chat send */
   document.getElementById('sendBtn').onclick = async () => {
     const msg = document.getElementById('message').value.trim();
     if(!msg) return;
@@ -138,13 +147,12 @@
     addBubble('user',msg);
 
     try{
-      const res=await fetch('/api/chat',{
-        method:'POST',headers:{'Content-Type':'application/json'},
+      const j = await safeJson(fetch('/api/chat',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({messages:lastTokens([system,...history])})
-      });
-      const j = await res.json();
-      if(!res.ok) throw new Error(j.error||'API error');
-      const reply = j.choices?.[0]?.message?.content||'…';
+      }));
+      const reply = j.choices?.[0]?.message?.content || '…';
       history.push({role:'assistant',content:reply});
       localStorage.setItem('fortunaHistory',JSON.stringify(history));
       addBubble('assistant',reply);
@@ -154,7 +162,7 @@
     }
   };
 
-  // --- basic drag-and-drop handlers (receipts & statements) ---
+  /* drag-and-drop handlers (receipts & statements) */
   function makeZone(zone,list,route){
     const input = document.createElement('input');
     input.type='file'; input.className='hidden';
@@ -170,27 +178,28 @@
     };
     input.onchange=()=>handleFiles(input.files);
 
-    function handleFiles(files){
-      [...files].forEach(f=>{
+    async function handleFiles(files){
+      for(const f of files){
         const li=document.createElement('li');
         li.textContent=f.name+' ⏳';
         list.appendChild(li);
         const fd=new FormData(); fd.append('file',f);
-        fetch(route,{method:'POST',body:fd})
-          .then(r=>r.json().then(j=>[r.ok,j]))
-          .then(([ok,j])=>{
-            li.textContent=f.name+' '+(ok?'✅':'⚠️ failed');
-            if(!ok) console.error(j);
-            if(j.summary) addBubble('assistant',
-              JSON.stringify(j.summary,null,2));
-            if(j.items)   addBubble('assistant',
-              JSON.stringify(j.items,null,2));
-          })
-          .catch(err=>{
-            li.textContent=f.name+' ⚠️ failed';
-            console.error(err);
-          });
-      });
+
+        try{
+          const j = await safeJson(
+            fetch(route,{method:'POST',body:fd})
+          );
+          li.textContent = f.name+' ✅';
+          if(j.summary) addBubble('assistant',
+            JSON.stringify(j.summary,null,2));
+          if(j.items)   addBubble('assistant',
+            JSON.stringify(j.items,null,2));
+        }catch(err){
+          li.textContent = f.name+' ⚠️ failed';
+          addBubble('assistant','⚠️ '+err.message);
+          console.error(err);
+        }
+      }
     }
   }
   makeZone(document.getElementById('receiptZone'),
@@ -199,6 +208,7 @@
   makeZone(document.getElementById('stmtZone'),
            document.getElementById('stmtList'),
            '/api/statement');
-  </script>
+</script>
+
 </body>
 </html>
